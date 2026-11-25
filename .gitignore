@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Next.js
+.next/
+out/
+build/
+
+# Local runtime data & browser session (NEVER commit)
+data/
+browser-session/
+*.db
+*.db-wal
+*.db-shm
+
+# Environment
+.env
+.env*.local
+.agents
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+tsconfig.tsbuildinfo
