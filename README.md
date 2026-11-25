@@ -1,19 +1,18 @@
-# SnipeSlot — Autonomous Academic Slot Booking Agent
+# SnipeSlot
 
-SnipeSlot is a lightweight, single-user autonomous slot booking application for the Saveetha Learner portal (`https://learner.saveetha.in/academicevents/event-booking/`).
+Local autonomous slot-booking tool for the Saveetha Learner portal (`https://learner.saveetha.in/academicevents/event-booking/`).
 
-## Tech Stack
+## Requirements
 
-- **Next.js (App Router)** + **TypeScript** + **Tailwind CSS**
-- **Playwright** (persistent Chromium profile owned exclusively by the background worker)
-- **Cheerio** for server-rendered portal HTML parsing
-- **SQLite (`node:sqlite`)** with WAL mode for shared persistence between the dashboard and worker
-- **Native Node.js timers** for scheduling and bounded retries
-- **Concurrently** to run both the Next.js server and background worker together
+- **Node.js 22+** (uses built-in `node:sqlite`)
+- **npm**
+- **Chromium** (installed via Playwright)
 
-## Setup
+## Quick Start
 
 ```bash
+git clone <your-repo-url>
+cd SnipeSlot
 npm install
 npx playwright install chromium
 npm run dev
@@ -21,40 +20,55 @@ npm run dev
 
 Open `http://127.0.0.1:3000` in your browser.
 
-### Available Commands
+`npm run dev` starts both:
+- **Web UI** on `http://127.0.0.1:3000`
+- **Background worker + WebSocket server** on `ws://127.0.0.1:3001`
 
-- `npm run dev`: Starts Next.js (bound to `127.0.0.1:3000`) and the background worker (`worker/index.ts`).
-- `npm run build`: Builds the Next.js production bundle.
-- `npm start`: Starts the production Next.js server and background worker.
-- `npm run typecheck`: Runs `tsc --noEmit`.
-- `npm run lint`: Runs ESLint.
-- `npm test`: Runs automated tests using `tsx --test`.
+For production:
 
-## How Persistent Portal Authentication Works
+```bash
+npm run build
+npm start
+```
 
-1. Click **Connect Portal** on the Overview or Settings page.
-2. The background worker closes any headless browser context, opens a visible Chromium window backed by `browser-session/`, and navigates to the Saveetha booking page.
-3. Log in manually through the college SSO flow. SnipeSlot never stores your username or password.
-4. Once `/academicevents/event-booking/` loads in an authenticated state, the worker closes the interactive window and reuses the saved cookies/session in headless mode.
-5. Before scheduled bookings, the worker checks session validity and distinguishes between `authenticated`, `expired` (redirects to login/SSO or returns 401/403), and `unavailable` (5xx, 429, or network timeouts). Temporary outages do not invalidate your session.
+## Usage
 
-## Adding & Scheduling a Booking
+1. **Connect your portal account**
+   - Click **Connect Portal** in the header (or inside **Settings**).
+   - A Chromium window opens to the Saveetha login page. Sign in manually.
+   - Once the booking page loads, the window closes and your session is saved locally in `browser-session/`. Your username and password are never stored.
 
-1. Go to **Events** and click **Refresh Portal** (use the term, title, date, or time filters if needed).
-2. Click **Add to queue** on the exact slot you want.
-3. Enter a genuine **Purpose for attending** (required, up to 255 characters) and check the explicit authorization box.
-4. The job is persisted in `data/snipeslot.db` and scheduled using the event's actual `Booking Window` opening time (parsed in `Asia/Kolkata` and stored internally in UTC).
-5. You can pause, resume, or remove jobs at any time from **Queue**.
+2. **Browse & schedule a slot**
+   - The **Events** page lists upcoming sessions and syncs automatically in the background.
+   - Filter by type (**All**, **Module**, **CIA**, **Viva**, **Other**), search by title/venue, date range, or session time.
+   - Click **Book** on a slot, enter your purpose (required, max 255 characters), and confirm.
 
-## How Retries & Verification Work
+3. **Monitor the queue**
+   - Switch to **Queue** to view countdowns, execution status, attempt counts, confirmation timestamps, or failure reasons.
+   - You can pause, resume, or remove queued jobs and inspect the collapsible **Execution Log**.
 
-- **Preflight**: Before submitting, the worker verifies session authentication, exact title/date/time/venue match, valid purpose, explicit authorization, and that the slot is `Open` (not full, closed, or waitlist-only).
-- **Dry-Run Mode**: Enabled by default in **Settings**. Verifies the booking form, CSRF token, and purpose field without sending the live POST submission. Disable Dry-Run Mode in **Settings** only when you are ready for live autonomous submissions.
-- **Retries**: Transient failures (`429`, `500`, `502`, `503`, `504`, network/navigation timeouts) are retried using exponential backoff with jitter, bounded by `maxRetries` and `maxRetryDurationSeconds`, while respecting `Retry-After` headers.
-- **Uncertain Outcomes**: If a submission times out, the worker re-fetches and verifies the target event's actual status on the portal before retrying. If verification is inconclusive, the job is marked `Verification required` to prevent duplicate submissions.
+4. **Settings**
+   - Click the gear icon in the header to reconnect or check your portal session, pause/start the scheduler, adjust the background monitor interval (`10–300s`), or configure retry limits.
+   - Use the sun/moon icon in the header to toggle between dark and light mode.
+
+## How It Works
+
+- **Single browser owner**: Only the background worker (`worker/index.ts`) accesses `browser-session/` to avoid Chromium profile lock conflicts.
+- **Persistent queue**: Jobs and logs are stored in `data/snipeslot.db` (SQLite WAL mode) and survive restarts.
+- **Verification**: After submitting the portal booking form, SnipeSlot re-fetches the target date from the portal and checks the exact event's status (`Booked`, `Waitlisted`, `Full`, or `Verification required`) rather than assuming a form submit succeeded.
+- **Retries**: Transient errors (`429`, `5xx`, network/navigation timeouts) use bounded exponential backoff with jitter and respect `Retry-After` headers.
+
+## Scripts
+
+- `npm run dev` — Run Next.js dev server and background worker
+- `npm run build` — Build production Next.js app
+- `npm start` — Run production server and background worker
+- `npm run typecheck` — Run `tsc --noEmit`
+- `npm run lint` — Run ESLint
+- `npm test` — Run tests (`tsx --test`)
 
 ## Limitations
 
-- Single-user local application bound to `127.0.0.1` (not designed for multi-tenant hosting).
-- Does not bypass CAPTCHAs, institutional limits, or eligibility rules, and does not automatically join waitlists or substitute alternative rooms/times.
-- Requires the background worker process (`npm run dev` or `npm start`) to remain running for scheduled execution.
+- Single-user local app bound to `127.0.0.1`; not intended for multi-user or public hosting.
+- Does not bypass CAPTCHAs, eligibility checks, or institutional booking limits, and does not automatically join waitlists or substitute alternative slots.
+- The background worker (`npm run dev` or `npm start`) must remain running for scheduled bookings to execute.
