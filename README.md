@@ -11,7 +11,7 @@ Local autonomous slot-booking tool for the Saveetha Learner portal (`https://lea
 ## Quick Start
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/baixooooo/SnipeSlot
 cd SnipeSlot
 npm install
 npx playwright install chromium
